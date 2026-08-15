@@ -4,14 +4,14 @@
 
 ---
 
-请帮我安装 @debb74/dsh-desktop 插件（DSH 桌面启动器）：
+请帮我安装 @debb74/dsh-desktop 插件：
 
 1. 在 web profile 安装插件包：`dsh plugin --profile web add @debb74/dsh-desktop`
 2. 检查 `$DSH_HOME/profiles/web/pnpm-workspace.yaml` 的 `allowBuilds` 是否包含 `sharp: true`，没有就加上（sharp 是原生模块，pnpm≥10 默认阻止其构建，不放行会导致"去背景"功能不可用），然后重新 `pnpm install`
 3. 重启 dsh web 服务（短暂中断，会话保留）
 4. 验证：浏览器打开 `http://127.0.0.1:3080` → 设置 → 插件 → 插件配置，应出现 **desktop** 卡片
 
-注意：本插件是 DSH 桌面启动器，配套的 Tauri 壳程序（独立窗口）需要单独构建，详情见 https://github.com/L-0915/dsh-desktop
+注意：本插件用于创建 DSH 的桌面快捷方式，配套的 Tauri 壳程序（独立窗口）需要单独构建，详情见 https://github.com/L-0915/dsh-desktop
 
 ---
 

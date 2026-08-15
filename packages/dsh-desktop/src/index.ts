@@ -53,7 +53,7 @@ const DEFAULT_ANNOUNCE = true
 const SECTION_ORDER = 160
 
 /** Model-facing announcement: plugin presence and capability boundary. */
-export const DESKTOP_GUIDANCE = '本机已安装 dsh-desktop 插件（DSH 桌面启动器）：设置页「桌面启动器」可创建/删除桌面快捷方式、选择图标、配置启动命令；快捷方式指向 Tauri 壳，双击即以独立窗口打开 Web GUI（127.0.0.1:3080）。用户在 GUI 中操作，agent 无需直接调用。'
+export const DESKTOP_GUIDANCE = '本机已安装 dsh-desktop 插件：设置页「插件配置」的 desktop 卡片可创建/删除桌面快捷方式、选择图标、配置启动命令；快捷方式指向 Tauri 壳，双击即以独立窗口打开 Web GUI（127.0.0.1:3080）。用户在 GUI 中操作，agent 无需直接调用。'
 
 /**
  * Resolve the Tauri shell executable path: the configured value first, then

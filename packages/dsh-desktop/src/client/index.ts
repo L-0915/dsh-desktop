@@ -2,9 +2,9 @@
  * Browser-half entry for dsh-desktop — runs inside the dsh web GUI.
  *
  * Registers the dsh-desktop locale dictionary and the launcher card inside
- * the Settings → Plugins → Plugin configuration list ("桌面启动器 / Desktop
- * Launcher") where the user creates/removes the desktop shortcut, picks an
- * icon, and edits the launch config.
+ * the Settings → Plugins → Plugin configuration list ("desktop") where the
+ * user creates/removes the desktop shortcut, picks an icon, and edits the
+ * launch config.
  *
  * Export discipline (packages/client rule): the /client surface carries what
  * cordis loading needs plus types only — all value exports stay internal.

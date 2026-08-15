@@ -1,14 +1,20 @@
 # @debb74/dsh-desktop
 
-DSH Desktop Launcher 插件——在 DSH Web GUI 的设置页提供桌面快捷方式管理：创建/删除桌面快捷方式、自定义图标（支持所有常见图片格式 + 自动去背景）、启动配置管理。配合 Tauri 壳（见仓库根目录）即可像桌面软件一样启动 DeepSeek Harness。
+A DSH plugin that manages a desktop shortcut for the DeepSeek Harness Web GUI: create/remove the shortcut, pick custom icons (all common image formats + automatic background removal), and configure the launch command. Pairs with the Tauri shell in the [dsh-desktop repository](https://github.com/L-0915/dsh-desktop) for a standalone window.
 
-## 安装
+[English](https://github.com/L-0915/dsh-desktop) | [中文](https://github.com/L-0915/dsh-desktop/blob/master/README.zh.md)
+
+## Install
 
 ```sh
-dsh plugin --profile web add link:<本仓库路径>/packages/dsh-desktop
+dsh plugin --profile web add @debb74/dsh-desktop
 ```
 
-或在 `$DSH_HOME/profiles/web/cordis.patch.yml` 追加：
+> **pnpm ≥ 10**: add `sharp: true` to `allowBuilds` in
+> `$DSH_HOME/profiles/web/pnpm-workspace.yaml`, re-run `pnpm install`, then
+> restart the dsh web service.
+
+Or manually append to `$DSH_HOME/profiles/web/cordis.patch.yml`:
 
 ```yaml
 - insert:
@@ -16,32 +22,25 @@ dsh plugin --profile web add link:<本仓库路径>/packages/dsh-desktop
       name: '@debb74/dsh-desktop'
 ```
 
-## 功能
+Then open Settings → Plugins → Plugin configuration → **desktop**.
 
-- 设置页「插件配置 → desktop」卡片：状态查看、快捷方式创建/删除、图标选择/上传、启动配置
-- 图标：内置图标动态发现（`assets/icons/` 下任意 `.ico` 自动出现）；上传支持 PNG/JPG/WebP/GIF/BMP 等，自动去纯色背景
-- 皮肤适配：UI 使用 `--dsw-alias-*` 变量，跟随 DSH 主题
+## Features
+
+- Desktop shortcut create / remove (Windows `.lnk`)
+- Icons: dynamic built-in discovery (`assets/icons/`), upload PNG/JPG/WebP/GIF/BMP with automatic solid-background removal, one-click apply to the shortcut
+- Skin-aware UI via `--dsw-alias-*` tokens
+- Configurable launch URL/port/command via `$DSH_HOME/desktop-launcher.json`
 
 ## API
 
-Host 半区提供 `/api/dsh-desktop/*` 路由：
-
-| 路由 | 方法 | 说明 |
+| Route | Method | Purpose |
 |---|---|---|
-| `/api/dsh-desktop/status` | GET | 平台/壳/快捷方式/配置/图标列表 |
-| `/api/dsh-desktop/config` | POST | 保存启动配置 |
-| `/api/dsh-desktop/shortcut` | POST/DELETE | 创建/删除桌面快捷方式 |
-| `/api/dsh-desktop/icon` | POST | 上传自定义图标（PNG base64） |
-| `/api/dsh-desktop/icon/<name>` | GET | 内置图标文件 |
-| `/api/dsh-desktop/icon/user/<name>` | GET/DELETE | 自定义图标文件 |
-
-## 开发
-
-```sh
-pnpm install
-pnpm run build    # tsc 类型 + tsdown 双 bundle（lib/index.mjs + lib/client.js）
-pnpm run typecheck
-```
+| `/api/dsh-desktop/status` | GET | platform / shell / shortcut / config / icons |
+| `/api/dsh-desktop/config` | POST | save launch config |
+| `/api/dsh-desktop/shortcut` | POST/DELETE | create / remove desktop shortcut |
+| `/api/dsh-desktop/icon` | POST | upload custom icon (PNG base64) |
+| `/api/dsh-desktop/icon/<name>` | GET | built-in icon file |
+| `/api/dsh-desktop/icon/user/<name>` | GET/DELETE | custom icon file |
 
 ## License
 
