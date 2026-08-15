@@ -90,15 +90,32 @@ pnpm build:shell
 
 ### 安装到 DSH Web
 
-**方式一：命令行（推荐）**
+**方式一：一行命令（推荐，小白友好）**
 
 ```sh
-dsh plugin --profile web add link:<本仓库路径>/packages/dsh-desktop
+dsh plugin --profile web add @debb74/dsh-desktop
 ```
 
-**方式二：手动**
+> ⚠️ **pnpm ≥ 10 需要放行 sharp 的原生构建**（否则去背景功能不可用）：
+> 在 `$DSH_HOME/profiles/web/pnpm-workspace.yaml` 的 `allowBuilds` 中加一行：
+> ```yaml
+> allowBuilds:
+>   sharp: true
+> ```
+> 然后重新 `pnpm install`，最后**重启 dsh web 服务**。
+>
+> 插件自带的 `cordis.patch.yml`（`dsh.bundle.patch`）会在 bundle 层自动应用，
+> 无需手动改配置文件。
 
-1. 把 `packages/dsh-desktop` 链接到 `$DSH_HOME/profiles/web/node_modules/@debb74/dsh-desktop`（Windows 下 junction 即可，改动实时生效）
+**方式二：本地开发安装（junction 软链，改动实时生效）**
+
+```sh
+dsh plugin --profile web add link:D:/dsh-home/dsh-desktop/packages/dsh-desktop
+```
+
+**方式三：手动**
+
+1. 把 `packages/dsh-desktop` 链接到 `$DSH_HOME/profiles/web/node_modules/@debb74/dsh-desktop`（Windows 下 junction 即可）
 2. 在 `$DSH_HOME/profiles/web/cordis.patch.yml` 追加：
 
 ```yaml
