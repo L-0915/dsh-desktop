@@ -56,6 +56,20 @@ dsh plugin --profile web add link:<本仓库绝对路径>/packages/dsh-desktop
 
 独立窗口程序（`dsh-desktop.exe`）已随 npm 包内置——无需额外构建或下载。
 
+#### 从源码构建壳（贡献者/开发者）
+
+开发或贡献时，自行构建独立窗口：
+
+```sh
+# 前置：Node.js ≥ 22.19、pnpm ≥ 9、Rust stable（MSVC 或 GNU 工具链）
+pnpm install                            # workspace 依赖
+pnpm build:plugin                       # 插件 bundle
+cd apps/shell/src-tauri
+cargo build --release                   # 壳：target/release/dsh-desktop.exe
+```
+
+构建后把 exe 复制到 `packages/dsh-desktop/shell/dsh-desktop.exe`（或在 desktop 卡片里填「壳程序路径」），快捷方式即可找到壳。
+
 ### 方式三：手动
 
 1. 把 `packages/dsh-desktop` 链接到 `$DSH_HOME/profiles/web/node_modules/@debb74/dsh-desktop`（Windows 用 junction，改动实时生效）

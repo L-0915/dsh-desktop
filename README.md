@@ -58,6 +58,21 @@ dsh plugin --profile web add link:<absolute path to this repo>/packages/dsh-desk
 The standalone window (`dsh-desktop.exe`) is bundled inside the npm package —
 no extra build or download needed.
 
+#### Building the shell from source (contributors)
+
+For development or contribution, build the standalone window yourself:
+
+```sh
+# prerequisites: Node.js ≥ 22.19, pnpm ≥ 9, Rust stable (MSVC or GNU toolchain)
+pnpm install                            # workspace dependencies
+pnpm build:plugin                       # plugin bundles
+cd apps/shell/src-tauri
+cargo build --release                   # shell: target/release/dsh-desktop.exe
+```
+
+After building, copy the exe to `packages/dsh-desktop/shell/dsh-desktop.exe`
+(or set **Shell path** in the desktop card) so the shortcut finds it.
+
 ### Option 3 — manual
 
 1. Link `packages/dsh-desktop` into `$DSH_HOME/profiles/web/node_modules/@debb74/dsh-desktop` (a Windows junction works and stays live)
