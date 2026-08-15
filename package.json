@@ -8,7 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build:shell": "cd apps/shell/src-tauri && cargo build --release",
+    "build:shell": "cd apps/shell/src-tauri && cargo build --release && cd ../.. && node scripts/copy-shell.mjs",
+    "copy:shell": "node scripts/copy-shell.mjs",
     "build:plugin": "pnpm -r --filter @debb74/dsh-desktop run build",
     "typecheck:plugin": "pnpm -r --filter @debb74/dsh-desktop run typecheck",
     "test:plugin": "node scripts/smoke.mjs",
