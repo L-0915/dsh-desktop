@@ -96,6 +96,33 @@ function check(name, ok, detail = '') {
   const cornerAlpha = raw.data[(0 * raw.info.width + 0) * 4 + 3]
   check('background corners transparent', cornerAlpha === 0, `corner alpha=${cornerAlpha}`)
 
+  // Flood fill must NOT punch holes inside the subject: a white island
+  // enclosed by the red subject (unconnected to the white border) survives.
+  const holey = await sharp({
+    create: { width: 64, height: 64, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+  }).composite([
+    {
+      input: await sharp({
+        create: { width: 40, height: 40, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } },
+      }).png().toBuffer(),
+      left: 12, top: 12,
+    },
+    {
+      input: await sharp({
+        create: { width: 12, height: 12, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+      }).png().toBuffer(),
+      left: 26, top: 26,
+    },
+  ]).png().toBuffer()
+  const holeyClean = await removeBackground(holey)
+  const holeyRaw = await sharp(holeyClean).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const holeyW = holeyRaw.info.width
+  const holeCenter = ((32 * holeyW + 32) * 4) + 3
+  const holeAlpha = holeyRaw.data[holeCenter]
+  check('white island inside subject preserved', holeAlpha > 0, `island alpha=${holeAlpha}`)
+  const holeyCorner = holeyRaw.data[(0 * holeyW + 0) * 4 + 3]
+  check('holey background corners transparent', holeyCorner === 0, `corner alpha=${holeyCorner}`)
+
   await rm(home, { recursive: true, force: true })
 }
 
