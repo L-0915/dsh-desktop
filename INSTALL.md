@@ -11,7 +11,7 @@
 3. 重启 dsh web 服务（短暂中断，会话保留）
 4. 验证：浏览器打开 `http://127.0.0.1:3080` → 设置 → 插件 → 插件配置，应出现 **desktop** 卡片
 
-注意：本插件是 DSH 桌面启动器，配套的 Tauri 壳程序（独立窗口）需要单独构建，详情见 https://github.com/debb74/dsh-desktop
+注意：本插件是 DSH 桌面启动器，配套的 Tauri 壳程序（独立窗口）需要单独构建，详情见 https://github.com/L-0915/dsh-desktop
 
 ---
 

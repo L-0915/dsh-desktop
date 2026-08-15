@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/debb74/dsh-desktop/pulls)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/L-0915/dsh-desktop/pulls)
 
 一个把 DSH 变成"真正的桌面软件"的插件 + 壳程序：
 
@@ -222,4 +222,4 @@ CI 会构建壳 + 插件并上传 Release 附件（见 `.github/workflows/build-
 
 ## 📄 License
 
-[MIT](LICENSE) © 2026 [debb74](https://github.com/debb74)
+[MIT](LICENSE) © 2026 [L-0915](https://github.com/L-0915)

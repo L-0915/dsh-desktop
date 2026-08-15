@@ -76,7 +76,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/debb74/dsh-desktop.git"
+    "url": "https://github.com/L-0915/dsh-desktop.git"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsdown",
