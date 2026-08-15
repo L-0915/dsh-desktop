@@ -13,6 +13,13 @@
 //! The window icon is set at startup from the configured icon path (the same
 //! file the desktop shortcut points at), so the window icon always matches
 //! the desktop icon the user chose — without recompiling.
+//!
+//! GUI subsystem (Windows): release builds must NOT attach a console window —
+//! this is what makes the shortcut open straight into the app window.
+
+// Windows GUI subsystem: no console window in release builds. In debug builds
+// the console stays so cargo's output remains visible.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::net::TcpStream;
 use std::path::PathBuf;
