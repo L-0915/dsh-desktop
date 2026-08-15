@@ -37,6 +37,8 @@ const node = {
       /^cosmokit$/,
       /^react$/,
       /^react-dom$/,
+      // Native module: must stay external (bundling breaks the ABI).
+      /^sharp$/,
     ],
   },
 }

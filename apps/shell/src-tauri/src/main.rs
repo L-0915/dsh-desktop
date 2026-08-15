@@ -3,11 +3,16 @@
 //!
 //! Startup flow:
 //!   1. Load `desktop-launcher.json` (looked up under `$DSH_HOME`, then next
-//!      to the executable) for the target URL, port, and optional start command.
+//!      to the executable) for the target URL, port, optional start command,
+//!      and the icon path applied to the desktop shortcut.
 //!   2. Probe the port; when the web service is not running and a start
 //!      command is configured, spawn it in the background (hidden window on
 //!      Windows) and poll until the port accepts connections.
 //!   3. Load the URL in the webview, replacing the local loading page.
+//!
+//! The window icon is set at startup from the configured icon path (the same
+//! file the desktop shortcut points at), so the window icon always matches
+//! the desktop icon the user chose — without recompiling.
 
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -38,6 +43,10 @@ struct LauncherConfig {
     /// Seconds to keep polling for the port before giving up.
     #[serde(default = "default_timeout_secs")]
     timeout_secs: u64,
+    /// Absolute path of the icon applied to the desktop shortcut. The window
+    /// icon is set from this file at startup so it matches the desktop icon.
+    #[serde(default)]
+    icon_path: Option<String>,
 }
 
 fn default_url() -> String {
@@ -60,6 +69,7 @@ impl Default for LauncherConfig {
             start_command: None,
             start_cwd: None,
             timeout_secs: default_timeout_secs(),
+            icon_path: None,
         }
     }
 }
@@ -153,6 +163,24 @@ fn main() {
             let window = app
                 .get_webview_window("main")
                 .expect("main window must exist");
+
+            // Match the window icon to the desktop shortcut icon: the plugin
+            // persists the applied icon path in desktop-launcher.json, so
+            // whichever icon the user picked for the shortcut is used here
+            // too — no recompile needed when the icon changes.
+            if let Some(icon_path) = config.icon_path.as_deref() {
+                if std::path::Path::new(icon_path).is_file() {
+                    match tauri::image::Image::from_path(icon_path) {
+                        Ok(image) => {
+                            window.set_icon(image).unwrap_or_else(|error| {
+                                eprintln!("[dsh-desktop] set_icon failed: {error}");
+                            });
+                        }
+                        Err(error) => eprintln!("[dsh-desktop] icon load failed: {error}"),
+                    }
+                }
+            }
+
             let url = config.url.clone();
             let port = config.port;
             let timeout = Duration::from_secs(config.timeout_secs);

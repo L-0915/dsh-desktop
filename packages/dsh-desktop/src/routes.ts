@@ -174,6 +174,7 @@ export function makeRoutes(context: {
             startCwd: typeof body.startCwd === 'string' ? body.startCwd : current.startCwd,
             timeoutSecs: typeof body.timeoutSecs === 'number' && body.timeoutSecs > 0 ? body.timeoutSecs : current.timeoutSecs,
             shellPath: typeof body.shellPath === 'string' ? body.shellPath : current.shellPath,
+            iconPath: typeof body.iconPath === 'string' ? body.iconPath : current.iconPath,
           }
           await saveConfig(next)
           writeJson(res, 200, { ok: true, config: next })
@@ -192,7 +193,10 @@ export function makeRoutes(context: {
           const match = icons.find(icon => icon.id === iconId)
           if (match !== undefined) iconPath = match.path
           const target = await createShortcut(shellPath, iconPath)
-          writeJson(res, 200, { ok: true, path: target, config })
+          // Persist the applied icon so the Tauri shell can match its window
+          // icon to the desktop shortcut icon at startup.
+          await saveConfig({ ...config, iconPath })
+          writeJson(res, 200, { ok: true, path: target, config: { ...config, iconPath } })
           return
         }
         if (method === 'DELETE' && path === '/api/dsh-desktop/shortcut') {

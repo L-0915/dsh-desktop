@@ -7,15 +7,18 @@
  * Run: node scripts/remove-bg-icons.mjs
  */
 import { readdir, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const sharp = require('D:\\deepseek-harness\\node_modules\\.pnpm\\sharp@0.35.3_@types+node@22.20.0\\node_modules\\sharp')
+const sharp = require('..\\packages\\dsh-desktop\\node_modules\\sharp')
 
 const { removeBackground } = await import('../packages/dsh-desktop/lib/index.mjs')
 
-const ICON_DIR = join('D:\\dsh-home\\dsh-desktop', 'packages', 'dsh-desktop', 'assets', 'icons')
+// Repository-relative (no machine-specific paths): scripts/../packages/...
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const ICON_DIR = join(REPO_ROOT, 'packages', 'dsh-desktop', 'assets', 'icons')
 const SIZES = [16, 32, 48, 64, 128, 256]
 
 /** Extract the 256px PNG payload from an ICO (last entry is the largest). */

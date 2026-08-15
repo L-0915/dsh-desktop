@@ -24,6 +24,12 @@ export interface LauncherConfig {
   timeoutSecs: number
   /** Absolute path of the shell executable the shortcut targets. */
   shellPath: string
+  /**
+   * Absolute path of the icon currently applied to the desktop shortcut.
+   * Written by the plugin whenever the shortcut is created/updated; the
+   * shell reads it at startup to match the window icon to the desktop icon.
+   */
+  iconPath: string
 }
 
 const CONFIG_FILE = 'desktop-launcher.json'
@@ -58,6 +64,7 @@ export function defaultConfig(): LauncherConfig {
     startCwd: '',
     timeoutSecs: DEFAULT_TIMEOUT_SECS,
     shellPath: '',
+    iconPath: '',
   }
 }
 
@@ -82,6 +89,7 @@ export async function loadConfig(): Promise<LauncherConfig> {
         ? parsed.timeoutSecs as number
         : base.timeoutSecs,
       shellPath: typeof parsed.shellPath === 'string' ? parsed.shellPath : base.shellPath,
+      iconPath: typeof parsed.iconPath === 'string' ? parsed.iconPath : base.iconPath,
     }
   } catch {
     return defaultConfig()

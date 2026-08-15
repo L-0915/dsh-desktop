@@ -13,7 +13,7 @@ import { extname, join } from 'node:path'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const sharp = require('D:\\deepseek-harness\\node_modules\\.pnpm\\sharp@0.35.3_@types+node@22.20.0\\node_modules\\sharp')
+const sharp = require('..\\packages\\dsh-desktop\\node_modules\\sharp')
 
 const dir = process.argv[2]
 if (!dir) {

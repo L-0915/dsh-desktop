@@ -3,6 +3,6 @@
 # (exports ".") runs in the host process (shortcut/icon/config API), and the
 # `dsh.client` declaration in package.json makes the browser half
 # (exports "./client") load in the web GUI.
-# - insert:
-#     - id: desktop
-#       name: '@debb74/dsh-desktop'
+- insert:
+    - id: desktop
+      name: '@debb74/dsh-desktop'

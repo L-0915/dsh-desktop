@@ -1,12 +1,15 @@
 // Analyze the user's icon files: corner/edge colors, opaque ratio,
 // background uniformity — decides which background-removal path fits.
 import { readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const sharp = require('D:\\deepseek-harness\\node_modules\\.pnpm\\sharp@0.35.3_@types+node@22.20.0\\node_modules\\sharp')
+const sharp = require('..\\packages\\dsh-desktop\\node_modules\\sharp')
 
-const dir = 'D:/dsh-home/dsh-desktop/packages/dsh-desktop/assets/icons'
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const dir = join(REPO_ROOT, 'packages', 'dsh-desktop', 'assets', 'icons')
 const files = ['blank.ico', 'write.ico', 'whale_a.ico', 'whale_l.ico']
 
 /** Extract the 256px PNG entry from an ICO (last entry is usually 256). */

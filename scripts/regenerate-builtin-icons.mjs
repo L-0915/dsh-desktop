@@ -1,31 +1,32 @@
 /**
  * Regenerate the plugin's built-in icons from their source images.
  *
- * Source mapping (D:\pictures originals → assets/icons names):
- *   icon.png  -> write.ico      dark.jpg -> blank.ico
- *   all1.png  -> whale_a.ico    ds2.png  -> whale_l.ico
- *
  * Each source is fitted onto a 256 transparent canvas, background-removed,
  * then repacked as a 6-size ICO (16/32/48/64/128/256). Already-transparent
  * sources pass through the removal step unchanged.
  *
- * Run: node scripts/regenerate-builtin-icons.mjs
+ * Usage: node scripts/regenerate-builtin-icons.mjs <source-dir>
+ *   source-dir: directory containing icon.png / all1.png / ds2.png / dark.jpg
  */
-import { readFile, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
-const sharp = require('D:\\deepseek-harness\\node_modules\\.pnpm\\sharp@0.35.3_@types+node@22.20.0\\node_modules\\sharp')
+const sharp = require('..\\packages\\dsh-desktop\\node_modules\\sharp')
 const { removeBackground } = await import('../packages/dsh-desktop/lib/index.mjs')
 
-const ICON_DIR = 'D:\\dsh-home\\dsh-desktop\\packages\\dsh-desktop\\assets\\icons'
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const ICON_DIR = join(REPO_ROOT, 'packages', 'dsh-desktop', 'assets', 'icons')
 const SIZES = [16, 32, 48, 64, 128, 256]
 
+const SOURCE_DIR = process.argv[2] ?? 'D:\\pictures'
 const SOURCES = [
-  { src: 'D:\\pictures\\icon.png', out: 'write.ico' },
-  { src: 'D:\\pictures\\all1.png', out: 'whale_a.ico' },
-  { src: 'D:\\pictures\\ds2.png', out: 'whale_l.ico' },
-  { src: 'D:\\pictures\\dark.jpg', out: 'blank.ico' },
+  { src: join(SOURCE_DIR, 'icon.png'), out: 'write.ico' },
+  { src: join(SOURCE_DIR, 'all1.png'), out: 'whale_a.ico' },
+  { src: join(SOURCE_DIR, 'ds2.png'), out: 'whale_l.ico' },
+  { src: join(SOURCE_DIR, 'dark.jpg'), out: 'blank.ico' },
 ]
 
 /** Pack N PNG payloads into one multi-size ICO. */

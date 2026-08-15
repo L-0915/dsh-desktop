@@ -3,18 +3,15 @@
  *
  * Icons uploaded as photos/screenshots (JPG-derived PNGs) carry an opaque
  * solid-color background (white/grey/etc.) that looks wrong on the desktop.
- * This module detects the dominant corner color and fades pixels close to it
+ * This module detects the dominant border color and fades pixels close to it
  * to transparent, with a soft edge so the subject keeps anti-aliased
- * contours. Transparent inputs (alpha already 0 at the corners) pass through
+ * contours. Transparent inputs (alpha already 0 on the border) pass through
  * untouched.
  *
  * @module dsh-desktop/background
  */
 
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const sharp = require('D:\\deepseek-harness\\node_modules\\.pnpm\\sharp@0.35.3_@types+node@22.20.0\\node_modules\\sharp')
+import sharp from 'sharp'
 
 /** RGB distance below this means "background" (fully transparent). */
 const BG_DISTANCE = 28
