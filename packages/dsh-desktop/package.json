@@ -70,6 +70,7 @@
     "lib/**/*.d.ts.map",
     "src",
     "assets",
+    "shell",
     "cordis.patch.yml",
     "README.md"
   ],

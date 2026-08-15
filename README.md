@@ -135,15 +135,14 @@ Edit everything from the settings page, or `$DSH_HOME/desktop-launcher.json` dir
 
 ## 🖥️ The shell (standalone window)
 
-The plugin manages the desktop shortcut; the **shell** is the standalone window
-that opens when you double-click it. Grab it from the
-[Releases](https://github.com/L-0915/dsh-desktop/releases) page — no building
-needed:
+The **shell** is the standalone window that opens when you double-click the
+shortcut. **It ships inside the npm package** (`shell/dsh-desktop.exe`) — install
+the plugin and it is already there; the desktop card auto-detects it (Shell
+shows **found**). No separate download or build needed.
 
-1. Download `dsh-desktop-windows-x64` (the `.exe`) from the latest Release
-2. Put it anywhere, e.g. `D:\dsh-desktop\dsh-desktop.exe`
-3. In the desktop card, set **Shell path** to that file (or leave it blank —
-   it auto-detects next to the plugin and in the repo dev layout)
+For other platforms (or to run the latest unreleased shell), grab the prebuilt
+`.exe` from the [Releases](https://github.com/L-0915/dsh-desktop/releases) page,
+or build from source (see "Option 2 — from GitHub" above).
 
 The plugin itself works without the shell; the shortcut just won't open a
 window until the shell is in place.

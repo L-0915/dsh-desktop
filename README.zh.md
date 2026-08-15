@@ -134,14 +134,9 @@ dsh-desktop/
 
 ## 🖥️ 壳程序（独立窗口）
 
-插件负责桌面快捷方式；**壳**是双击快捷方式后打开的独立窗口。从
-[Releases](https://github.com/L-0915/dsh-desktop/releases) 页面下载即可——**无需构建**：
+**壳**是双击快捷方式后打开的独立窗口。**它已经随 npm 包一起安装**（`shell/dsh-desktop.exe`）——装完插件就在了，desktop 卡片会自动探测（壳程序显示**已找到**）。**无需单独下载或构建**。
 
-1. 从最新 Release 下载 `dsh-desktop-windows-x64`（`.exe` 文件）
-2. 放到任意位置，如 `D:\dsh-desktop\dsh-desktop.exe`
-3. 在 desktop 卡片里把「壳程序路径」填成该文件（留空会自动探测插件旁和仓库开发目录）
-
-插件本身不依赖壳也能用；壳未就位时快捷方式不会打开窗口。
+其他平台（或想用最新未发布版本）：从 [Releases](https://github.com/L-0915/dsh-desktop/releases) 下载预构建 `.exe`，或按「方式二：GitHub 克隆安装」从源码构建。
 
 ## 🖼️ 自定义内置图标
 
