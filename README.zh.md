@@ -56,9 +56,7 @@ dsh plugin --profile web add link:<本仓库绝对路径>/packages/dsh-desktop
 
 独立窗口程序（`dsh-desktop.exe`）已随 npm 包内置——无需额外构建或下载。
 
-#### 从源码构建壳（贡献者/开发者）
-
-开发或贡献时，自行构建独立窗口：
+从源码构建独立窗口：
 
 ```sh
 # 前置：Node.js ≥ 22.19、pnpm ≥ 9、Rust stable（MSVC 或 GNU 工具链）

@@ -58,9 +58,7 @@ dsh plugin --profile web add link:<absolute path to this repo>/packages/dsh-desk
 The standalone window (`dsh-desktop.exe`) is bundled inside the npm package —
 no extra build or download needed.
 
-#### Building the shell from source (contributors)
-
-For development or contribution, build the standalone window yourself:
+To build the standalone window from source:
 
 ```sh
 # prerequisites: Node.js ≥ 22.19, pnpm ≥ 9, Rust stable (MSVC or GNU toolchain)
