@@ -55,16 +55,8 @@ pnpm build:plugin                       # build the plugin (packages/dsh-desktop
 dsh plugin --profile web add link:<absolute path to this repo>/packages/dsh-desktop
 ```
 
-To also build the shell (the standalone window) from source:
-
-```sh
-# prerequisites: Rust stable (MSVC or GNU toolchain)
-cd apps/shell/src-tauri
-cargo build --release
-# output: apps/shell/src-tauri/target/release/dsh-desktop.exe
-```
-
-Or download a prebuilt shell from the [Releases](https://github.com/L-0915/dsh-desktop/releases) page — no toolchain needed.
+The standalone window (`dsh-desktop.exe`) is bundled inside the npm package —
+no extra build or download needed.
 
 ### Option 3 — manual
 
@@ -132,20 +124,6 @@ Edit everything from the settings page, or `$DSH_HOME/desktop-launcher.json` dir
 | `startCwd` | Working directory for the start command |
 | `timeoutSecs` | Readiness timeout in seconds |
 | `shellPath` | Path to the shell executable (blank = auto-detect) |
-
-## 🖥️ The shell (standalone window)
-
-The **shell** is the standalone window that opens when you double-click the
-shortcut. **It ships inside the npm package** (`shell/dsh-desktop.exe`) — install
-the plugin and it is already there; the desktop card auto-detects it (Shell
-shows **found**). No separate download or build needed.
-
-For other platforms (or to run the latest unreleased shell), grab the prebuilt
-`.exe` from the [Releases](https://github.com/L-0915/dsh-desktop/releases) page,
-or build from source (see "Option 2 — from GitHub" above).
-
-The plugin itself works without the shell; the shortcut just won't open a
-window until the shell is in place.
 
 ## 🖼️ Custom built-in icons
 

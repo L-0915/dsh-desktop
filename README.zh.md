@@ -54,16 +54,7 @@ pnpm build:plugin                       # 构建插件（packages/dsh-desktop/li
 dsh plugin --profile web add link:<本仓库绝对路径>/packages/dsh-desktop
 ```
 
-如需从源码构建壳（独立窗口）：
-
-```sh
-# 前置：Rust stable（MSVC 或 GNU 工具链）
-cd apps/shell/src-tauri
-cargo build --release
-# 产物：apps/shell/src-tauri/target/release/dsh-desktop.exe
-```
-
-也可以直接从 [Releases](https://github.com/L-0915/dsh-desktop/releases) 下载预构建壳——无需任何工具链。
+独立窗口程序（`dsh-desktop.exe`）已随 npm 包内置——无需额外构建或下载。
 
 ### 方式三：手动
 
@@ -131,12 +122,6 @@ dsh-desktop/
 | `startCwd` | 启动命令的工作目录 |
 | `timeoutSecs` | 就绪等待超时（秒） |
 | `shellPath` | 壳可执行文件路径（留空自动探测） |
-
-## 🖥️ 壳程序（独立窗口）
-
-**壳**是双击快捷方式后打开的独立窗口。**它已经随 npm 包一起安装**（`shell/dsh-desktop.exe`）——装完插件就在了，desktop 卡片会自动探测（壳程序显示**已找到**）。**无需单独下载或构建**。
-
-其他平台（或想用最新未发布版本）：从 [Releases](https://github.com/L-0915/dsh-desktop/releases) 下载预构建 `.exe`，或按「方式二：GitHub 克隆安装」从源码构建。
 
 ## 🖼️ 自定义内置图标
 
