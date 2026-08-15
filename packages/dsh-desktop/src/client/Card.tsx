@@ -28,6 +28,8 @@ interface IconDto {
   name: string
   builtin: boolean
   url: string
+  /** Absolute local path — matched against config.iconPath for selection. */
+  path: string
 }
 
 /** The launcher config as surfaced by the host. */
@@ -38,6 +40,8 @@ interface ConfigDto {
   startCwd: string
   timeoutSecs: number
   shellPath: string
+  /** Icon currently applied to the desktop shortcut. */
+  iconPath: string
 }
 
 /** Status payload of GET /api/dsh-desktop/status. */
@@ -92,7 +96,7 @@ export function DesktopLauncherCard(props: DesktopLauncherCardProps): JSX.Elemen
   const [busy, setBusy] = useState<'none' | 'create' | 'remove' | 'save' | 'upload'>('none')
   const [selectedIcon, setSelectedIcon] = useState('')
   const [form, setForm] = useState<ConfigDto>({
-    url: '', port: 3080, startCommand: [], startCwd: '', timeoutSecs: 60, shellPath: '',
+    url: '', port: 3080, startCommand: [], startCwd: '', timeoutSecs: 60, shellPath: '', iconPath: '',
   })
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -101,7 +105,13 @@ export function DesktopLauncherCard(props: DesktopLauncherCardProps): JSX.Elemen
       const next = await api<StatusDto>('/api/dsh-desktop/status')
       setStatus(next)
       setForm(next.config)
-      setSelectedIcon(prev => prev || next.icons[0]?.id || '')
+      // Selection follows the REAL state — the icon currently applied to the
+      // desktop shortcut (config.iconPath) — so reopening the card shows the
+      // icon that is actually in use instead of always resetting to the first.
+      const applied = next.config.iconPath !== ''
+        ? next.icons.find(icon => icon.path === next.config.iconPath)?.id
+        : undefined
+      setSelectedIcon(applied ?? next.icons[0]?.id ?? '')
       setError('')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
