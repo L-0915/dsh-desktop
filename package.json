@@ -1,0 +1,18 @@
+{
+  "name": "dsh-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH Desktop Launcher — desktop shortcuts + standalone app window for DeepSeek Harness Web GUI (Windows first, macOS later)",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build:shell": "cd apps/shell/src-tauri && cargo build --release",
+    "build:plugin": "pnpm -r --filter @debb74/dsh-desktop run build",
+    "typecheck:plugin": "pnpm -r --filter @debb74/dsh-desktop run typecheck",
+    "test:plugin": "node scripts/smoke.mjs",
+    "verify:plugin": "powershell -File scripts/verify-artifacts.ps1",
+    "icons:builtin": "node scripts/regenerate-builtin-icons.mjs"
+  }
+}

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeepSeek Harness</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .box { text-align: center; }
+      .logo {
+        font-size: 56px;
+        margin-bottom: 16px;
+        animation: pulse 1.6s ease-in-out infinite;
+      }
+      h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+      p { font-size: 14px; color: #94a3b8; margin: 0; }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <div class="logo">🐳</div>
+      <h1>DeepSeek Harness</h1>
+      <p>正在启动服务，请稍候…</p>
+    </div>
+  </body>
+</html>
