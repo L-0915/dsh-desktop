@@ -15,7 +15,7 @@
         align-items: center;
         justify-content: center;
       }
-      .box { text-align: center; }
+      .box { text-align: center; max-width: 460px; padding: 0 24px; }
       .logo {
         font-size: 56px;
         margin-bottom: 16px;
@@ -23,6 +23,19 @@
       }
       h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
       p { font-size: 14px; color: #94a3b8; margin: 0; }
+      #errorMsg { color: #f87171; margin-bottom: 12px; white-space: pre-line; }
+      #retryBtn {
+        margin-top: 16px;
+        padding: 8px 24px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #0f172a;
+        background: #38bdf8;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      #retryBtn:hover { background: #7dd3fc; }
       @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.45; }
@@ -33,7 +46,32 @@
     <div class="box">
       <div class="logo">🐳</div>
       <h1>DeepSeek Harness</h1>
-      <p>正在启动服务，请稍候…</p>
+      <div id="loading">
+        <p>正在启动服务，请稍候…</p>
+      </div>
+      <div id="error" hidden>
+        <p id="errorMsg">服务启动失败</p>
+        <p>请点击下方按钮重试。</p>
+        <button id="retryBtn" type="button">重试</button>
+      </div>
     </div>
+    <script>
+      window.__dshShowLoading = function () {
+        document.getElementById('loading').hidden = false;
+        document.getElementById('error').hidden = true;
+      };
+      window.__dshShowError = function (message) {
+        if (typeof message === 'string' && message !== '') {
+          document.getElementById('errorMsg').textContent = message;
+        }
+        document.getElementById('loading').hidden = true;
+        document.getElementById('error').hidden = false;
+      };
+      document.getElementById('retryBtn').addEventListener('click', function () {
+        if (window.__TAURI__ && typeof window.__TAURI__.invoke === 'function') {
+          window.__TAURI__.invoke('retry_start').catch(function () {});
+        }
+      });
+    </script>
   </body>
 </html>

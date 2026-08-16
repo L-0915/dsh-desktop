@@ -98,12 +98,23 @@ export async function loadConfig(): Promise<LauncherConfig> {
 
 /**
  * Persist a launcher configuration document (atomically via temp + rename).
+ *
+ * The Tauri shell deserializes snake_case keys (`start_command`), while this
+ * plugin reads camelCase keys (`startCommand`); both are written so the file
+ * works for either consumer no matter which one wrote it last.
  * @param config - the full next configuration.
  */
 export async function saveConfig(config: LauncherConfig): Promise<void> {
   const path = configPath()
   await mkdir(dirname(path), { recursive: true })
-  const text = JSON.stringify(config, null, 2)
+  const doc = {
+    ...config,
+    start_command: config.startCommand,
+    start_cwd: config.startCwd,
+    timeout_secs: config.timeoutSecs,
+    icon_path: config.iconPath,
+  }
+  const text = JSON.stringify(doc, null, 2)
   const tmp = `${path}.tmp`
   await writeFile(tmp, text, 'utf8')
   await writeFile(path, text, 'utf8')

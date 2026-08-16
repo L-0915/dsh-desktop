@@ -7,8 +7,19 @@
 //!      and the icon path applied to the desktop shortcut.
 //!   2. Probe the port; when the web service is not running and a start
 //!      command is configured, spawn it in the background (hidden window on
-//!      Windows) and poll until the port accepts connections.
+//!      Windows, output captured to a log file under `$DSH_HOME/logs`) and
+//!      poll until the port accepts connections.
 //!   3. Load the URL in the webview, replacing the local loading page.
+//!
+//! The plugin writes the config with camelCase JSON keys (`startCommand`,
+//! `startCwd`, `timeoutSecs`, `iconPath`), hence `#[serde(rename_all =
+//! "camelCase")]` on the config struct — without it every optional field
+//! silently resolves to its default and the shell never starts the service.
+//!
+//! When the service does not become ready in time (or the start command
+//! fails), the loading page switches to an error state with a retry button
+//! instead of hanging forever; retry re-runs the same start-and-poll flow
+//! through the `retry_start` command.
 //!
 //! The window icon is set at startup from the configured icon path (the same
 //! file the desktop shortcut points at), so the window icon always matches
@@ -21,19 +32,22 @@
 // the console stays so cargo's output remains visible.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::fs::{File, OpenOptions};
+use std::io::Write;
 use std::net::TcpStream;
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
-use tauri::Manager;
+use tauri::{AppHandle, Manager, WebviewWindow};
 
 /// Runtime configuration read from `desktop-launcher.json`.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct LauncherConfig {
     /// Target URL of the DSH web GUI.
     #[serde(default = "default_url")]
@@ -118,21 +132,60 @@ fn port_open(port: u16) -> bool {
     TcpStream::connect(("127.0.0.1", port)).is_ok()
 }
 
-/// Spawn the configured start command detached from this process.
-fn spawn_start_command(config: &LauncherConfig) {
-    let Some(command) = &config.start_command else {
-        eprintln!("[dsh-desktop] service down and no start command configured");
-        return;
-    };
-    if command.is_empty() {
-        return;
+/// Log file receiving the spawned service's stdout/stderr, so a service that
+/// fails after launch leaves a trace. Lives at `$DSH_HOME/logs/…` (next to
+/// the executable when DSH_HOME is unset).
+fn service_log_path() -> PathBuf {
+    let base = std::env::var("DSH_HOME")
+        .map(PathBuf::from)
+        .ok()
+        .or_else(|| std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf)))
+        .unwrap_or_default();
+    base.join("logs").join("dsh-desktop-service.log")
+}
+
+/// Open (creating, and truncating beyond 1 MiB) the service log for appends.
+fn open_service_log() -> std::io::Result<File> {
+    let path = service_log_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > 1024 * 1024 {
+            let _ = OpenOptions::new().write(true).truncate(true).open(&path);
+        }
+    }
+    OpenOptions::new().create(true).append(true).open(path)
+}
+
+/// Spawn the configured start command detached from this process, capturing
+/// its output into the service log. A missing/empty command is an error —
+/// there is then nothing that can bring the service up.
+fn spawn_start_command(config: &LauncherConfig) -> Result<(), String> {
+    let command = config
+        .start_command
+        .as_deref()
+        .filter(|parts| !parts.is_empty())
+        .ok_or_else(|| "startCommand is empty in desktop-launcher.json".to_string())?;
     let program = &command[0];
     let args = &command[1..];
     let mut child = Command::new(program);
     child.args(args);
-    if let Some(cwd) = &config.start_cwd {
+    if let Some(cwd) = config.start_cwd.as_deref().filter(|cwd| !cwd.is_empty()) {
         child.current_dir(cwd);
+    }
+    let log_file = match open_service_log() {
+        Ok(file) => Some(file),
+        Err(error) => {
+            eprintln!("[dsh-desktop] service log unavailable: {error}");
+            None
+        }
+    };
+    if let Some(log_file) = log_file {
+        let mut log_writer = log_file.try_clone().map_err(|error| error.to_string())?;
+        let _ = writeln!(log_writer, "--- starting {} {} ---", program, args.join(" "));
+        child.stdout(Stdio::from(log_file.try_clone().map_err(|error| error.to_string())?));
+        child.stderr(Stdio::from(log_file));
     }
     #[cfg(windows)]
     {
@@ -140,10 +193,10 @@ fn spawn_start_command(config: &LauncherConfig) {
         // CREATE_NO_WINDOW: keep the spawned service off the taskbar.
         child.creation_flags(0x0800_0000);
     }
-    match child.spawn() {
-        Ok(_) => eprintln!("[dsh-desktop] started: {} {}", program, args.join(" ")),
-        Err(error) => eprintln!("[dsh-desktop] failed to start {program}: {error}"),
-    }
+    child
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to start {program}: {error}"))
 }
 
 /// Poll the port until open or the timeout elapses.
@@ -161,11 +214,81 @@ fn wait_for_port(port: u16, timeout: Duration, cancelled: &AtomicBool) -> bool {
     port_open(port)
 }
 
+/// Navigate the window to the configured GUI URL.
+fn open_gui(window: &WebviewWindow, url: &str) {
+    eprintln!("[dsh-desktop] service up, loading {url}");
+    match url.parse::<url::Url>() {
+        Ok(parsed) => {
+            let _ = window.navigate(parsed);
+        }
+        Err(error) => eprintln!("[dsh-desktop] invalid URL: {error}"),
+    }
+}
+
+/// Switch the loading page to its error state (message + retry button).
+fn show_error(window: &WebviewWindow, message: &str) {
+    eprintln!("[dsh-desktop] startup failed: {message}");
+    let encoded = serde_json::to_string(message)
+        .unwrap_or_else(|_| "\"service failed to start\"".to_string());
+    let _ = window.eval(&format!("window.__dshShowError && window.__dshShowError({encoded})"));
+}
+
+/// One start-and-poll attempt; when it fails the loading page shows the error
+/// state (the retry button runs `retry_start`, which calls this again).
+fn try_start(app: &AppHandle, window: &WebviewWindow, config: &LauncherConfig, cancelled: &AtomicBool) {
+    if port_open(config.port) {
+        open_gui(window, &config.url);
+        return;
+    }
+    if let Err(error) = spawn_start_command(config) {
+        show_error(window, &error);
+        return;
+    }
+    let timeout = Duration::from_secs(config.timeout_secs);
+    if wait_for_port(config.port, timeout, cancelled) {
+        open_gui(window, &config.url);
+    } else {
+        let log = service_log_path();
+        show_error(
+            window,
+            &format!(
+                "服务在 {} 秒内没有就绪。\n请点击下方「重试」按钮；服务日志：{}",
+                timeout.as_secs(),
+                log.display()
+            ),
+        );
+    }
+}
+
+/// Shared state for the retry command.
+struct AppState {
+    config: LauncherConfig,
+    cancelled: Arc<AtomicBool>,
+}
+
+/// Retry the service start from the loading page's retry button.
+#[tauri::command]
+fn retry_start(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let window = app
+        .get_webview_window("main")
+        .expect("main window must exist");
+    let _ = window.eval("window.__dshShowLoading && window.__dshShowLoading()");
+    let config = state.config.clone();
+    let cancelled = state.cancelled.clone();
+    let app_handle = app.clone();
+    thread::spawn(move || try_start(&app_handle, &window, &config, &cancelled));
+}
+
 fn main() {
     let config = load_config();
-    let already_up = port_open(config.port);
 
     tauri::Builder::default()
+        .manage(AppState {
+            config: config.clone(),
+            cancelled: Arc::new(AtomicBool::new(false)),
+        })
+        .invoke_handler(tauri::generate_handler![retry_start])
         .setup(move |app| {
             let window = app
                 .get_webview_window("main")
@@ -188,44 +311,70 @@ fn main() {
                 }
             }
 
-            let url = config.url.clone();
-            let port = config.port;
-            let timeout = Duration::from_secs(config.timeout_secs);
-            let cancelled = Arc::new(AtomicBool::new(false));
-            let cancel_flag = cancelled.clone();
-            let window_handle = window.clone();
-
             // Navigate once the service is reachable (or immediately when it
             // already is). Runs off the main thread so the loading page shows.
+            let state = app.state::<AppState>();
+            let app_handle = app.handle().clone();
+            let window_handle = window.clone();
+            let config_handle = state.config.clone();
+            let cancelled_start = state.cancelled.clone();
             thread::spawn(move || {
-                let ready = if already_up {
-                    true
-                } else {
-                    spawn_start_command(&config);
-                    wait_for_port(port, timeout, &cancel_flag)
-                };
-                if ready {
-                    eprintln!("[dsh-desktop] service up, loading {url}");
-                    match url.parse::<url::Url>() {
-                        Ok(parsed) => {
-                            let _ = window_handle.navigate(parsed);
-                        }
-                        Err(error) => eprintln!("[dsh-desktop] invalid URL: {error}"),
-                    }
-                } else {
-                    eprintln!("[dsh-desktop] service did not become ready in time");
-                }
+                try_start(&app_handle, &window_handle, &config_handle, &cancelled_start)
             });
 
             // Closing the window cancels the wait.
+            let cancelled_close = state.cancelled.clone();
             let window_for_close = window.clone();
             window_for_close.on_window_event(move |event| {
                 if let tauri::WindowEvent::Destroyed = event {
-                    cancelled.store(true, Ordering::Relaxed);
+                    cancelled_close.store(true, Ordering::Relaxed);
                 }
             });
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running dsh-desktop");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LauncherConfig;
+
+    #[test]
+    fn parses_camel_case_keys_written_by_the_plugin() {
+        let json = r#"{
+            "url": "http://127.0.0.1:3080",
+            "port": 3080,
+            "startCommand": ["node", "web"],
+            "startCwd": "D:\\deepseek-harness",
+            "timeoutSecs": 30,
+            "shellPath": "D:\\shell.exe",
+            "iconPath": "D:\\icon.ico"
+        }"#;
+        let config: LauncherConfig = serde_json::from_str(json).expect("camelCase config must parse");
+        assert_eq!(config.url, "http://127.0.0.1:3080");
+        assert_eq!(config.port, 3080);
+        assert_eq!(config.start_command.as_deref(), Some(["node", "web"].as_slice()));
+        assert_eq!(config.start_cwd.as_deref(), Some("D:\\deepseek-harness"));
+        assert_eq!(config.timeout_secs, 30);
+        assert_eq!(config.icon_path.as_deref(), Some("D:\\icon.ico"));
+    }
+
+    #[test]
+    fn empty_start_command_parses_as_empty_list() {
+        let json = r#"{"startCommand": [], "startCwd": ""}"#;
+        let config: LauncherConfig = serde_json::from_str(json).expect("empty array must parse");
+        assert_eq!(config.start_command.as_deref(), Some([].as_slice()));
+        assert_eq!(config.start_cwd.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn missing_keys_fall_back_to_defaults() {
+        let config: LauncherConfig = serde_json::from_str("{}").expect("empty object must parse");
+        assert_eq!(config.url, "http://127.0.0.1:3080");
+        assert_eq!(config.port, 3080);
+        assert_eq!(config.start_command, None);
+        assert_eq!(config.timeout_secs, 60);
+        assert_eq!(config.icon_path, None);
+    }
 }
