@@ -38,7 +38,7 @@ use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -161,7 +161,8 @@ fn open_service_log() -> std::io::Result<File> {
 /// Spawn the configured start command detached from this process, capturing
 /// its output into the service log. A missing/empty command is an error —
 /// there is then nothing that can bring the service up.
-fn spawn_start_command(config: &LauncherConfig) -> Result<(), String> {
+/// @returns the spawned service's PID, so the shell can stop it on exit.
+fn spawn_start_command(config: &LauncherConfig) -> Result<u32, String> {
     let command = config
         .start_command
         .as_deref()
@@ -193,10 +194,10 @@ fn spawn_start_command(config: &LauncherConfig) -> Result<(), String> {
         // CREATE_NO_WINDOW: keep the spawned service off the taskbar.
         child.creation_flags(0x0800_0000);
     }
-    child
+    let spawned = child
         .spawn()
-        .map(|_| ())
-        .map_err(|error| format!("failed to start {program}: {error}"))
+        .map_err(|error| format!("failed to start {program}: {error}"))?;
+    Ok(spawned.id())
 }
 
 /// Poll the port until open or the timeout elapses.
@@ -235,14 +236,27 @@ fn show_error(window: &WebviewWindow, message: &str) {
 
 /// One start-and-poll attempt; when it fails the loading page shows the error
 /// state (the retry button runs `retry_start`, which calls this again).
-fn try_start(app: &AppHandle, window: &WebviewWindow, config: &LauncherConfig, cancelled: &AtomicBool) {
+fn try_start(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    config: &LauncherConfig,
+    cancelled: &AtomicBool,
+    service_pid: &Mutex<Option<u32>>,
+) {
     if port_open(config.port) {
         open_gui(window, &config.url);
         return;
     }
-    if let Err(error) = spawn_start_command(config) {
-        show_error(window, &error);
-        return;
+    let pid = match spawn_start_command(config) {
+        Ok(pid) => pid,
+        Err(error) => {
+            show_error(window, &error);
+            return;
+        }
+    };
+    // Remember the spawned service PID so "退出" can stop it along with the window.
+    if let Ok(mut guard) = service_pid.lock() {
+        *guard = Some(pid);
     }
     let timeout = Duration::from_secs(config.timeout_secs);
     if wait_for_port(config.port, timeout, cancelled) {
@@ -260,10 +274,12 @@ fn try_start(app: &AppHandle, window: &WebviewWindow, config: &LauncherConfig, c
     }
 }
 
-/// Shared state for the retry command.
+/// Shared state for the retry and exit commands.
 struct AppState {
     config: LauncherConfig,
     cancelled: Arc<AtomicBool>,
+    /// PID of the service this shell spawned, when any. "退出" stops it.
+    service_pid: Arc<Mutex<Option<u32>>>,
 }
 
 /// Retry the service start from the loading page's retry button.
@@ -276,8 +292,36 @@ fn retry_start(app: AppHandle) {
     let _ = window.eval("window.__dshShowLoading && window.__dshShowLoading()");
     let config = state.config.clone();
     let cancelled = state.cancelled.clone();
+    let service_pid = state.service_pid.clone();
     let app_handle = app.clone();
-    thread::spawn(move || try_start(&app_handle, &window, &config, &cancelled));
+    thread::spawn(move || try_start(&app_handle, &window, &config, &cancelled, &service_pid));
+}
+
+/// Stop the spawned service (if any) and close the window — the "退出" choice.
+#[tauri::command]
+fn exit_app(app: AppHandle) {
+    let state = app.state::<AppState>();
+    if let Ok(mut guard) = state.service_pid.lock() {
+        if let Some(pid) = guard.take() {
+            eprintln!("[dsh-desktop] stopping spawned service PID {pid}");
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let _ = Command::new("taskkill")
+                    .args(["/PID", &pid.to_string(), "/T", "/F"])
+                    .creation_flags(0x0800_0000)
+                    .spawn();
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = Command::new("kill").arg(pid.to_string()).spawn();
+            }
+        }
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.close();
+    }
+    app.exit(0);
 }
 
 fn main() {
@@ -287,8 +331,9 @@ fn main() {
         .manage(AppState {
             config: config.clone(),
             cancelled: Arc::new(AtomicBool::new(false)),
+            service_pid: Arc::new(Mutex::new(None)),
         })
-        .invoke_handler(tauri::generate_handler![retry_start])
+        .invoke_handler(tauri::generate_handler![retry_start, exit_app, close_window])
         .setup(move |app| {
             let window = app
                 .get_webview_window("main")
@@ -318,15 +363,37 @@ fn main() {
             let window_handle = window.clone();
             let config_handle = state.config.clone();
             let cancelled_start = state.cancelled.clone();
+            let service_pid_start = state.service_pid.clone();
             thread::spawn(move || {
-                try_start(&app_handle, &window_handle, &config_handle, &cancelled_start)
+                try_start(&app_handle, &window_handle, &config_handle, &cancelled_start, &service_pid_start)
             });
 
             // Closing the window cancels the wait.
             let cancelled_close = state.cancelled.clone();
             let window_for_close = window.clone();
+            let window_for_ask = window.clone();
+
+            // Intercept the X button: ask the user whether to exit (stop the
+            // spawned service too) or just close the window (service keeps
+            // running in the background). The dialog lives in the loading
+            // page's JS; the choice invokes `exit_app` (stop + close) or
+            // `close_window` (close only). When the shell did not spawn the
+            // service (it was already running), closing is always safe.
+            let state_close = app.state::<AppState>();
+            let pid_guard = state_close.service_pid.clone();
             window_for_close.on_window_event(move |event| {
-                if let tauri::WindowEvent::Destroyed = event {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    let spawned = pid_guard.lock().map(|g| g.is_some()).unwrap_or(false);
+                    if spawned {
+                        // Ask via the loading page dialog; prevent the default
+                        // close until the user chooses (JS calls back).
+                        api.prevent_close();
+                        let _ = window_for_ask.eval(
+                            "window.__dshAskExit && window.__dshAskExit()",
+                        );
+                    }
+                    // Not spawned by us: let the default close proceed.
+                } else if let tauri::WindowEvent::Destroyed = event {
                     cancelled_close.store(true, Ordering::Relaxed);
                 }
             });
@@ -334,6 +401,14 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running dsh-desktop");
+}
+
+/// Close the window only (the service keeps running) — the "仅关闭窗口" choice.
+#[tauri::command]
+fn close_window(app: AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.close();
+    }
 }
 
 #[cfg(test)]

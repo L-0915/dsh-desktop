@@ -54,11 +54,18 @@
         <p>请点击下方按钮重试。</p>
         <button id="retryBtn" type="button">重试</button>
       </div>
+      <div id="exitAsk" hidden>
+        <p>服务仍在后台运行。</p>
+        <p>「退出」将同时停止服务，「仅关闭窗口」则保留服务。</p>
+        <button id="exitBtn" type="button">退出</button>
+        <button id="closeOnlyBtn" type="button">仅关闭窗口</button>
+      </div>
     </div>
     <script>
       window.__dshShowLoading = function () {
         document.getElementById('loading').hidden = false;
         document.getElementById('error').hidden = true;
+        document.getElementById('exitAsk').hidden = true;
       };
       window.__dshShowError = function (message) {
         if (typeof message === 'string' && message !== '') {
@@ -66,10 +73,24 @@
         }
         document.getElementById('loading').hidden = true;
         document.getElementById('error').hidden = false;
+        document.getElementById('exitAsk').hidden = true;
+      };
+      window.__dshAskExit = function () {
+        document.getElementById('exitAsk').hidden = false;
       };
       document.getElementById('retryBtn').addEventListener('click', function () {
         if (window.__TAURI__ && typeof window.__TAURI__.invoke === 'function') {
           window.__TAURI__.invoke('retry_start').catch(function () {});
+        }
+      });
+      document.getElementById('exitBtn').addEventListener('click', function () {
+        if (window.__TAURI__ && typeof window.__TAURI__.invoke === 'function') {
+          window.__TAURI__.invoke('exit_app').catch(function () {});
+        }
+      });
+      document.getElementById('closeOnlyBtn').addEventListener('click', function () {
+        if (window.__TAURI__ && typeof window.__TAURI__.invoke === 'function') {
+          window.__TAURI__.invoke('close_window').catch(function () {});
         }
       });
     </script>
