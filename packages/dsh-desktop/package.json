@@ -1,7 +1,7 @@
 {
   "name": "@debb74/dsh-desktop",
   "description": "DSH Desktop Launcher — desktop shortcuts + standalone app window (Tauri shell) for the dsh web GUI: create/remove a desktop shortcut that opens the GUI in its own window like a native app, with a custom-icon picker in the settings page. Windows first, macOS later.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
