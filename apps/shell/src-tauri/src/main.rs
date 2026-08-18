@@ -33,8 +33,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::fs::{File, OpenOptions};
-use std::io::Write;
-use std::net::TcpStream;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -284,6 +284,9 @@ struct AppState {
     /// programmatic close through instead of re-asking (the service stays up
     /// on the port, so the port-open check alone can't tell the two apart).
     close_allowed: Arc<AtomicBool>,
+    /// Local TCP port of the in-page bridge (see `start_bridge`), so the
+    /// injected dialog's buttons can trigger close/exit without `__TAURI__`.
+    bridge_port: Arc<Mutex<Option<u16>>>,
 }
 
 /// Retry the service start from the loading page's retry button.
@@ -305,11 +308,8 @@ fn retry_start(app: AppHandle) {
 /// "一起走" choice. Waits for the port to actually stop listening so the
 /// CloseRequested interceptor (which asks whenever the port is up) does not
 /// re-trigger the dialog while the stop is still in flight.
-#[tauri::command]
-fn exit_app(app: AppHandle) {
-    let state = app.state::<AppState>();
-    stop_service(&state, state.config.port);
-    let port = state.config.port;
+fn do_exit(app: &AppHandle, service_pid: &Mutex<Option<u32>>, port: u16) {
+    stop_service(service_pid, port);
     for _ in 0..25 {
         if !port_open(port) {
             break;
@@ -326,21 +326,75 @@ fn exit_app(app: AppHandle) {
 /// choice. Sets `close_allowed` first so the CloseRequested interceptor lets
 /// this programmatic close through (the service is still listening on the
 /// port, so the interceptor would otherwise re-ask and block the close).
-#[tauri::command]
-fn close_window(app: AppHandle) {
-    let state = app.state::<AppState>();
-    state.close_allowed.store(true, Ordering::Relaxed);
+fn do_close(app: &AppHandle, close_allowed: &AtomicBool) {
+    close_allowed.store(true, Ordering::Relaxed);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.close();
     }
 }
 
+/// The "一起走" command (called from the injected dialog via `__TAURI__`).
+#[tauri::command]
+fn exit_app(app: AppHandle) {
+    let state = app.state::<AppState>();
+    do_exit(&app, &state.service_pid, state.config.port);
+}
+
+/// The "留下小鲸鱼" command (called from the injected dialog via `__TAURI__`).
+#[tauri::command]
+fn close_window(app: AppHandle) {
+    let state = app.state::<AppState>();
+    do_close(&app, &state.close_allowed);
+}
+
+/// In-page bridge: a loopback TCP listener whose port is baked into the
+/// injected dialog script. Buttons ping `http://127.0.0.1:<port>/act/close`
+/// (or `/act/exit`) with an `<img>`/`fetch` request, which browsers send
+/// regardless of framework or `__TAURI__` availability — a reliable fallback
+/// for closing the window when the IPC bridge is unavailable.
+fn start_bridge(app: AppHandle) {
+    let listener = match TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => listener,
+        Err(error) => {
+            eprintln!("[dsh-desktop] bridge bind failed: {error}");
+            return;
+        }
+    };
+    let port = listener.local_addr().map(|addr| addr.port()).unwrap_or(0);
+    // Clone the state pieces the bridge thread needs before spawning, so the
+    // thread never borrows through `app.state()` (which would not be 'static).
+    let service_pid = app.state::<AppState>().service_pid.clone();
+    let close_allowed = app.state::<AppState>().close_allowed.clone();
+    let config_port = app.state::<AppState>().config.port;
+    if let Ok(mut guard) = app.state::<AppState>().bridge_port.lock() {
+        *guard = Some(port);
+    }
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut buf = [0u8; 512];
+            let _ = stream.read(&mut buf);
+            let request = String::from_utf8_lossy(&buf[..]);
+            let path = request
+                .split_whitespace()
+                .nth(1)
+                .unwrap_or("/")
+                .to_string();
+            match path.as_str() {
+                "/act/close" => do_close(&app, &close_allowed),
+                "/act/exit" => do_exit(&app, &service_pid, config_port),
+                _ => {}
+            }
+        }
+    });
+}
+
 /// Kill the service on the given port (and any service this shell spawned).
 /// On Windows this finds the process LISTENING on the port via netstat, so
 /// "一起走" stops the service no matter who started it.
-fn stop_service(state: &AppState, port: u16) {
+fn stop_service(service_pid: &Mutex<Option<u32>>, port: u16) {
     // The service we spawned ourselves, if any.
-    if let Ok(mut guard) = state.service_pid.lock() {
+    if let Ok(mut guard) = service_pid.lock() {
         if let Some(pid) = guard.take() {
             kill_pid(pid);
         }
@@ -379,11 +433,13 @@ fn kill_pid(pid: u32) {
 
 /// Inject a skin-aware, stylized exit dialog into the CURRENT page (the DSH
 /// GUI after navigation). Uses the page's `--dsw-alias-*` skin tokens so it
-/// matches the active theme; buttons call the Tauri commands directly
-/// (withGlobalTauri is enabled, so `window.__TAURI__` exists on any page).
-fn ask_exit_via_page(window: &WebviewWindow) {
+/// matches the active theme; buttons fire both the `__TAURI__` commands and a
+/// loopback bridge ping (`<img>`/`fetch`), so the dialog works even when the
+/// page cannot reach the IPC bridge.
+fn ask_exit_via_page(window: &WebviewWindow, bridge_port: u16) {
     let script = r#"
 (() => {
+  const BRIDGE = 'http://127.0.0.1:__BRIDGE_PORT__';
   if (document.getElementById('dsh-exit-dialog')) return;
   const d = document.createElement('div');
   d.id = 'dsh-exit-dialog';
@@ -437,17 +493,21 @@ fn ask_exit_via_page(window: &WebviewWindow) {
     const act = e.target.closest('button')?.dataset?.act;
     if (!act) return;
     if (act === 'cancel') { d.remove(); return; }
+    const action = act === 'exit' ? 'exit' : 'close';
+    // Bridge ping first: an <img> request is sent by the browser no matter
+    // what, so the shell can act even without __TAURI__.
+    const url = BRIDGE + '/act/' + action;
+    try { new Image().src = url; } catch (err) {}
+    try { fetch(url, { mode: 'no-cors', keepalive: true }).catch(() => {}); } catch (err) {}
     if (window.__TAURI__ && window.__TAURI__.invoke) {
-      window.__TAURI__.invoke(act === 'exit' ? 'exit_app' : 'close_window')
-        .catch(() => d.remove());
-    } else {
-      d.remove(); // no bridge (shouldn't happen): drop the dialog, stay open
+      window.__TAURI__.invoke(action === 'exit' ? 'exit_app' : 'close_window')
+        .catch(() => {});
     }
   });
   document.body.appendChild(d);
 })();
 "#;
-    let _ = window.eval(script);
+    let _ = window.eval(&script.replace("__BRIDGE_PORT__", &bridge_port.to_string()));
 }
 
 fn main() {
@@ -459,6 +519,7 @@ fn main() {
             cancelled: Arc::new(AtomicBool::new(false)),
             service_pid: Arc::new(Mutex::new(None)),
             close_allowed: Arc::new(AtomicBool::new(false)),
+            bridge_port: Arc::new(Mutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![retry_start, exit_app, close_window])
         .setup(move |app| {
@@ -482,6 +543,11 @@ fn main() {
                     }
                 }
             }
+
+            // In-page bridge for the exit dialog buttons (works without
+            // __TAURI__): loopback TCP listener on a random port.
+            let bridge_app = app.handle().clone();
+            start_bridge(bridge_app);
 
             // Navigate once the service is reachable (or immediately when it
             // already is). Runs off the main thread so the loading page shows.
@@ -509,6 +575,11 @@ fn main() {
             let pid_guard = state_close.service_pid.clone();
             let port_guard = state_close.config.port;
             let close_allowed_guard = state_close.close_allowed.clone();
+            let bridge_port = state_close
+                .bridge_port
+                .lock()
+                .map(|guard| guard.unwrap_or(0))
+                .unwrap_or(0);
             let window_for_ask = window.clone();
             window_for_close.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -523,7 +594,7 @@ fn main() {
                         // Prevent the default close; the dialog's buttons call
                         // exit_app / close_window, which decide the outcome.
                         api.prevent_close();
-                        ask_exit_via_page(&window_for_ask);
+                        ask_exit_via_page(&window_for_ask, bridge_port);
                     }
                     // Service not running: let the default close proceed.
                 } else if let tauri::WindowEvent::Destroyed = event {
