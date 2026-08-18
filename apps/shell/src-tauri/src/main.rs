@@ -280,6 +280,10 @@ struct AppState {
     cancelled: Arc<AtomicBool>,
     /// PID of the service this shell spawned, when any. "退出" stops it.
     service_pid: Arc<Mutex<Option<u32>>>,
+    /// Set by `close_window` so the CloseRequested interceptor lets the
+    /// programmatic close through instead of re-asking (the service stays up
+    /// on the port, so the port-open check alone can't tell the two apart).
+    close_allowed: Arc<AtomicBool>,
 }
 
 /// Retry the service start from the loading page's retry button.
@@ -297,26 +301,35 @@ fn retry_start(app: AppHandle) {
     thread::spawn(move || try_start(&app_handle, &window, &config, &cancelled, &service_pid));
 }
 
-/// Stop the spawned service (if any) and close the window — the "一起走" choice.
+/// Stop the service (spawned or user-started) and close the window — the
+/// "一起走" choice. Waits for the port to actually stop listening so the
+/// CloseRequested interceptor (which asks whenever the port is up) does not
+/// re-trigger the dialog while the stop is still in flight.
 #[tauri::command]
 fn exit_app(app: AppHandle) {
     let state = app.state::<AppState>();
     stop_service(&state, state.config.port);
+    let port = state.config.port;
+    for _ in 0..25 {
+        if !port_open(port) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.close();
     }
     app.exit(0);
 }
 
-/// Close the window only, leaving the service running — the "留下小鲸鱼" choice.
-/// Takes the PID first so the CloseRequested interceptor sees no spawned
-/// service and lets the close proceed without asking again.
+/// Close the window only, leaving the service running — the "留下小鲸鱼"
+/// choice. Sets `close_allowed` first so the CloseRequested interceptor lets
+/// this programmatic close through (the service is still listening on the
+/// port, so the interceptor would otherwise re-ask and block the close).
 #[tauri::command]
 fn close_window(app: AppHandle) {
     let state = app.state::<AppState>();
-    if let Ok(mut guard) = state.service_pid.lock() {
-        let _ = guard.take(); // keep the service; just forget we spawned it
-    }
+    state.close_allowed.store(true, Ordering::Relaxed);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.close();
     }
@@ -445,6 +458,7 @@ fn main() {
             config: config.clone(),
             cancelled: Arc::new(AtomicBool::new(false)),
             service_pid: Arc::new(Mutex::new(None)),
+            close_allowed: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![retry_start, exit_app, close_window])
         .setup(move |app| {
@@ -494,9 +508,15 @@ fn main() {
             let state_close = app.state::<AppState>();
             let pid_guard = state_close.service_pid.clone();
             let port_guard = state_close.config.port;
+            let close_allowed_guard = state_close.close_allowed.clone();
             let window_for_ask = window.clone();
             window_for_close.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    // A close initiated by the dialog's 「留下小鲸鱼」button:
+                    // let it through without re-asking.
+                    if close_allowed_guard.swap(false, Ordering::Relaxed) {
+                        return;
+                    }
                     let service_up = port_open(port_guard)
                         || pid_guard.lock().map(|g| g.is_some()).unwrap_or(false);
                     if service_up {
