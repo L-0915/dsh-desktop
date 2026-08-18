@@ -70,6 +70,11 @@ for (const name of REQUIRED) {
     }
   }
   await copyFile(source, join(SHELL_DIR, name))
+  if (name === 'WebView2Loader.dll' && source !== join(RELEASE_DIR, name)) {
+    // CI uploads from target/release — also drop a copy there so the
+    // artifact step picks it up alongside the exe.
+    await copyFile(source, join(RELEASE_DIR, name))
+  }
   console.log(`OK   ${name}`)
   copied++
 }
