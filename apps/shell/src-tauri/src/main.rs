@@ -297,31 +297,144 @@ fn retry_start(app: AppHandle) {
     thread::spawn(move || try_start(&app_handle, &window, &config, &cancelled, &service_pid));
 }
 
-/// Stop the spawned service (if any) and close the window — the "退出" choice.
+/// Stop the spawned service (if any) and close the window — the "一起走" choice.
 #[tauri::command]
 fn exit_app(app: AppHandle) {
     let state = app.state::<AppState>();
-    if let Ok(mut guard) = state.service_pid.lock() {
-        if let Some(pid) = guard.take() {
-            eprintln!("[dsh-desktop] stopping spawned service PID {pid}");
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                let _ = Command::new("taskkill")
-                    .args(["/PID", &pid.to_string(), "/T", "/F"])
-                    .creation_flags(0x0800_0000)
-                    .spawn();
-            }
-            #[cfg(not(windows))]
-            {
-                let _ = Command::new("kill").arg(pid.to_string()).spawn();
-            }
-        }
-    }
+    stop_service(&state, state.config.port);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.close();
     }
     app.exit(0);
+}
+
+/// Close the window only, leaving the service running — the "留下小鲸鱼" choice.
+/// Takes the PID first so the CloseRequested interceptor sees no spawned
+/// service and lets the close proceed without asking again.
+#[tauri::command]
+fn close_window(app: AppHandle) {
+    let state = app.state::<AppState>();
+    if let Ok(mut guard) = state.service_pid.lock() {
+        let _ = guard.take(); // keep the service; just forget we spawned it
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.close();
+    }
+}
+
+/// Kill the service on the given port (and any service this shell spawned).
+/// On Windows this finds the process LISTENING on the port via netstat, so
+/// "一起走" stops the service no matter who started it.
+fn stop_service(state: &AppState, port: u16) {
+    // The service we spawned ourselves, if any.
+    if let Ok(mut guard) = state.service_pid.lock() {
+        if let Some(pid) = guard.take() {
+            kill_pid(pid);
+        }
+    }
+    // Also stop whatever is listening on the port (user-started service).
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let script = format!(
+            "$c = Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue; \
+             if ($c) {{ $c | ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }} }}",
+        );
+        let _ = Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .creation_flags(0x0800_0000)
+            .spawn();
+    }
+}
+
+/// Kill one process tree (Windows: taskkill /T /F).
+fn kill_pid(pid: u32) {
+    eprintln!("[dsh-desktop] stopping PID {pid}");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .creation_flags(0x0800_0000)
+            .spawn();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = Command::new("kill").arg(pid.to_string()).spawn();
+    }
+}
+
+/// Inject a skin-aware, stylized exit dialog into the CURRENT page (the DSH
+/// GUI after navigation). Uses the page's `--dsw-alias-*` skin tokens so it
+/// matches the active theme; buttons call the Tauri commands directly
+/// (withGlobalTauri is enabled, so `window.__TAURI__` exists on any page).
+fn ask_exit_via_page(window: &WebviewWindow) {
+    let script = r#"
+(() => {
+  if (document.getElementById('dsh-exit-dialog')) return;
+  const d = document.createElement('div');
+  d.id = 'dsh-exit-dialog';
+  d.style.cssText = [
+    'position:fixed', 'top:0', 'left:0', 'right:0', 'bottom:0',
+    'z-index:2147483647',
+    'display:flex', 'align-items:center', 'justify-content:center',
+    'background:rgba(0,0,0,.45)', 'backdrop-filter:blur(4px)',
+    'font-family:system-ui,-apple-system,"Segoe UI",sans-serif',
+  ].join(';');
+  d.innerHTML = `
+    <div style="
+      width:min(380px,86vw); border-radius:16px; overflow:hidden;
+      background:var(--dsw-alias-bg-layer-2,#111827);
+      border:1px solid var(--dsw-alias-border-l2,#374151);
+      box-shadow:0 18px 60px rgba(0,0,0,.45);
+    ">
+      <div style="padding:22px 24px 6px; text-align:center;">
+        <div style="font-size:44px; line-height:1;">🐳</div>
+        <h2 style="margin:10px 0 6px; font-size:18px; font-weight:700;
+          color:var(--dsw-alias-label-primary,#f3f4f6);">要离开了吗？</h2>
+        <p style="margin:0; font-size:13px; line-height:1.7;
+          color:var(--dsw-alias-label-secondary,#9ca3af);">
+          小鲸鱼还在后台游着呢～<br/>
+          「一起走」会带它离开，「留下小鲸鱼」让它继续陪你
+        </p>
+      </div>
+      <div style="padding:16px 24px 22px; display:flex; flex-direction:column; gap:10px;">
+        <button data-act="exit" style="
+          padding:11px 0; border:none; border-radius:10px; cursor:pointer;
+          font-size:14px; font-weight:700; color:#fff;
+          background:linear-gradient(135deg,#fb7185,#f472b6);">
+          一起走
+        </button>
+        <button data-act="close" style="
+          padding:11px 0; border:none; border-radius:10px; cursor:pointer;
+          font-size:14px; font-weight:700;
+          color:var(--dsw-alias-label-primary-foreground,#fff);
+          background:linear-gradient(135deg,#60a5fa,#818cf8);">
+          留下小鲸鱼
+        </button>
+        <button data-act="cancel" style="
+          padding:9px 0; border:1px solid var(--dsw-alias-border-l2,#475569);
+          border-radius:10px; background:transparent; cursor:pointer;
+          font-size:13px; color:var(--dsw-alias-label-tertiary,#94a3b8);">
+          再陪我一会
+        </button>
+      </div>
+    </div>`;
+  d.addEventListener('click', (e) => {
+    const act = e.target.closest('button')?.dataset?.act;
+    if (!act) return;
+    if (act === 'cancel') { d.remove(); return; }
+    if (window.__TAURI__ && window.__TAURI__.invoke) {
+      window.__TAURI__.invoke(act === 'exit' ? 'exit_app' : 'close_window')
+        .catch(() => d.remove());
+    } else {
+      d.remove(); // no bridge (shouldn't happen): drop the dialog, stay open
+    }
+  });
+  document.body.appendChild(d);
+})();
+"#;
+    let _ = window.eval(script);
 }
 
 fn main() {
@@ -371,28 +484,28 @@ fn main() {
             // Closing the window cancels the wait.
             let cancelled_close = state.cancelled.clone();
             let window_for_close = window.clone();
-            let window_for_ask = window.clone();
 
-            // Intercept the X button: ask the user whether to exit (stop the
-            // spawned service too) or just close the window (service keeps
-            // running in the background). The dialog lives in the loading
-            // page's JS; the choice invokes `exit_app` (stop + close) or
-            // `close_window` (close only). When the shell did not spawn the
-            // service (it was already running), closing is always safe.
+            // Intercept the X button: whenever the DSH service is running on
+            // the configured port (whoever started it), inject the skin-aware
+            // exit dialog into the current page (DSH GUI after navigation —
+            // withGlobalTauri makes window.__TAURI__ available there, and the
+            // --dsw-alias-* tokens follow the active theme). 「一起走」stops
+            // the service; 「留下小鲸鱼」keeps it; 「再陪我一会」cancels.
             let state_close = app.state::<AppState>();
             let pid_guard = state_close.service_pid.clone();
+            let port_guard = state_close.config.port;
+            let window_for_ask = window.clone();
             window_for_close.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    let spawned = pid_guard.lock().map(|g| g.is_some()).unwrap_or(false);
-                    if spawned {
-                        // Ask via the loading page dialog; prevent the default
-                        // close until the user chooses (JS calls back).
+                    let service_up = port_open(port_guard)
+                        || pid_guard.lock().map(|g| g.is_some()).unwrap_or(false);
+                    if service_up {
+                        // Prevent the default close; the dialog's buttons call
+                        // exit_app / close_window, which decide the outcome.
                         api.prevent_close();
-                        let _ = window_for_ask.eval(
-                            "window.__dshAskExit && window.__dshAskExit()",
-                        );
+                        ask_exit_via_page(&window_for_ask);
                     }
-                    // Not spawned by us: let the default close proceed.
+                    // Service not running: let the default close proceed.
                 } else if let tauri::WindowEvent::Destroyed = event {
                     cancelled_close.store(true, Ordering::Relaxed);
                 }
@@ -401,14 +514,6 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running dsh-desktop");
-}
-
-/// Close the window only (the service keeps running) — the "仅关闭窗口" choice.
-#[tauri::command]
-fn close_window(app: AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.close();
-    }
 }
 
 #[cfg(test)]
@@ -429,7 +534,8 @@ mod tests {
         let config: LauncherConfig = serde_json::from_str(json).expect("camelCase config must parse");
         assert_eq!(config.url, "http://127.0.0.1:3080");
         assert_eq!(config.port, 3080);
-        assert_eq!(config.start_command.as_deref(), Some(["node", "web"].as_slice()));
+        let expected: Vec<String> = vec!["node".into(), "web".into()];
+        assert_eq!(config.start_command.as_deref(), Some(expected.as_slice()));
         assert_eq!(config.start_cwd.as_deref(), Some("D:\\deepseek-harness"));
         assert_eq!(config.timeout_secs, 30);
         assert_eq!(config.icon_path.as_deref(), Some("D:\\icon.ico"));
@@ -439,7 +545,8 @@ mod tests {
     fn empty_start_command_parses_as_empty_list() {
         let json = r#"{"startCommand": [], "startCwd": ""}"#;
         let config: LauncherConfig = serde_json::from_str(json).expect("empty array must parse");
-        assert_eq!(config.start_command.as_deref(), Some([].as_slice()));
+        let expected: Vec<String> = vec![];
+        assert_eq!(config.start_command.as_deref(), Some(expected.as_slice()));
         assert_eq!(config.start_cwd.as_deref(), Some(""));
     }
 
