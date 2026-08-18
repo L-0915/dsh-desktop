@@ -305,17 +305,13 @@ fn retry_start(app: AppHandle) {
 }
 
 /// Stop the service (spawned or user-started) and close the window — the
-/// "一起走" choice. Waits for the port to actually stop listening so the
-/// CloseRequested interceptor (which asks whenever the port is up) does not
-/// re-trigger the dialog while the stop is still in flight.
-fn do_exit(app: &AppHandle, service_pid: &Mutex<Option<u32>>, port: u16) {
+/// "一起走" choice. The kill commands run as detached processes, so the
+/// window closes immediately and the service stops a moment later; the
+/// `close_allowed` flag lets the CloseRequested interceptor through so it
+/// does not re-ask while the stop is still in flight.
+fn do_exit(app: &AppHandle, service_pid: &Mutex<Option<u32>>, port: u16, close_allowed: &AtomicBool) {
     stop_service(service_pid, port);
-    for _ in 0..25 {
-        if !port_open(port) {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    }
+    close_allowed.store(true, Ordering::Relaxed);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.close();
     }
@@ -337,7 +333,7 @@ fn do_close(app: &AppHandle, close_allowed: &AtomicBool) {
 #[tauri::command]
 fn exit_app(app: AppHandle) {
     let state = app.state::<AppState>();
-    do_exit(&app, &state.service_pid, state.config.port);
+    do_exit(&app, &state.service_pid, state.config.port, &state.close_allowed);
 }
 
 /// The "留下小鲸鱼" command (called from the injected dialog via `__TAURI__`).
@@ -382,7 +378,7 @@ fn start_bridge(app: AppHandle) {
                 .to_string();
             match path.as_str() {
                 "/act/close" => do_close(&app, &close_allowed),
-                "/act/exit" => do_exit(&app, &service_pid, config_port),
+                "/act/exit" => do_exit(&app, &service_pid, config_port, &close_allowed),
                 _ => {}
             }
         }
